@@ -1,0 +1,35 @@
+{
+  "name": "beacon-controller",
+  "version": "1.0.0",
+  "description": "Contrôleur Node.js pour relayer les événements ESP32 vers le backend",
+  "main": "controller.js",
+  "scripts": {
+    "start": "node controller.js",
+    "dev": "nodemon controller.js"
+  },
+  "keywords": [
+    "beacon",
+    "esp32",
+    "controller",
+    "proxy",
+    "nodejs",
+    "express"
+  ],
+  "author": "Votre nom",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "coap": "^1.4.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mosca": "^2.8.3",
+    "mqtt": "^5.13.3",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

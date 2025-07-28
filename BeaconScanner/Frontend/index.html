@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beacon Scanner - Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border-left: 4px solid #007bff;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .beacon-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .beacon-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        .beacon-item.absent {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+        .beacon-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .beacon-details {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+        }
+        .status-present {
+            background-color: #28a745;
+        }
+        .status-absent {
+            background-color: #dc3545;
+        }
+        .refresh-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .refresh-btn:hover {
+            background: #0056b3;
+        }
+        .auto-refresh {
+            margin-left: 10px;
+        }
+        .events-log {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .event-arrival {
+            color: #28a745;
+        }
+        .event-departure {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Beacon Scanner Dashboard</h1>
+        <div style="margin-bottom: 16px;">
+            <button class="refresh-btn" onclick="refreshData()">🔄 Actualiser</button>
+            <label class="auto-refresh">
+                <input type="checkbox" id="autoRefresh" checked> Actualisation automatique (5s)
+            </label>
+        </div>
+        <div style="margin-bottom: 16px;">
+            <button class="refresh-btn" style="background:#28a745" onclick="setLed('on')">💡 Allumer LED</button>
+            <button class="refresh-btn" style="background:#dc3545" onclick="setLed('off')">💡 Éteindre LED</button>
+            <span id="ledStatus" style="margin-left:16px;font-weight:bold;"></span>
+        </div>
+        <div class="stats" id="stats">
+            <!-- Les statistiques seront chargées ici -->
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📱 Beacons Détectés</h2>
+        <div class="beacon-list" id="beaconList">
+            <!-- La liste des beacons sera chargée ici -->
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Événements Récents</h2>
+        <div class="events-log" id="eventsLog">
+            <!-- Les événements seront chargés ici -->
+        </div>
+    </div>
+
+    <script>
+        const CONTROLLER_URL = 'http://localhost:4000'; // Pour les LEDs
+        const SERVER_URL = 'http://localhost:3000';     // Pour les événements et stats
+        
+        async function setLed(state) {
+            try {
+                const response = await fetch(`${CONTROLLER_URL}/led/${state}`, { method: 'POST' });
+                const data = await response.json();
+                document.getElementById('ledStatus').textContent = data.success ? `LED ${state === 'on' ? 'allumée' : 'éteinte'}` : 'Erreur LED';
+            } catch (e) {
+                console.error('Erreur LED:', e);
+                document.getElementById('ledStatus').textContent = '';
+            }
+        }
+        let autoRefreshInterval;
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${SERVER_URL}${endpoint}`);
+                return await response.json();
+            } catch (error) {
+                console.error('Erreur lors de la récupération des données:', error);
+                return null;
+            }
+        }
+
+        async function refreshStats() {
+            const stats = await fetchData('/stats');
+            if (!stats) return;
+
+            const statsContainer = document.getElementById('stats');
+            statsContainer.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-number">${stats.totalEvents}</div>
+                    <div class="stat-label">Événements Total</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.last24h.arrivals}</div>
+                    <div class="stat-label">Arrivées (24h)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.last24h.departures}</div>
+                    <div class="stat-label">Départs (24h)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.last24h.uniqueBeacons}</div>
+                    <div class="stat-label">Beacons Uniques (24h)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.connectedDevices.length}</div>
+                    <div class="stat-label">Appareils Connectés</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${Math.round(stats.uptime / 60)}m</div>
+                    <div class="stat-label">Uptime</div>
+                </div>
+            `;
+        }
+
+        async function refreshBeacons() {
+            const beaconStatus = await fetchData('/beacons/status');
+            if (!beaconStatus) return;
+
+            const beaconList = document.getElementById('beaconList');
+            
+            if (beaconStatus.beacons.length === 0) {
+                beaconList.innerHTML = '<p>Aucun beacon détecté pour le moment...</p>';
+                return;
+            }
+
+            beaconList.innerHTML = beaconStatus.beacons.map(beacon => `
+                <div class="beacon-item ${beacon.status === 'departure' ? 'absent' : ''}">
+                    <div class="beacon-name">
+                        ${beacon.name || 'Beacon Inconnu'}
+                        <span class="status-badge ${beacon.status === 'arrival' ? 'status-present' : 'status-absent'}">
+                            ${beacon.status === 'arrival' ? 'Présent' : 'Absent'}
+                        </span>
+                    </div>
+                    <div class="beacon-details">
+                        ID: ${beacon.beaconId}<br>
+                        RSSI: ${beacon.rssi} dBm | Dernière activité: ${new Date(beacon.lastSeen).toLocaleTimeString()}<br>
+                        Appareil: ${beacon.deviceId}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function refreshEvents() {
+            const events = await fetchData('/events?limit=20');
+            if (!events) return;
+
+            const eventsLog = document.getElementById('eventsLog');
+            
+            if (events.events.length === 0) {
+                eventsLog.innerHTML = 'Aucun événement pour le moment...';
+                return;
+            }
+
+            eventsLog.innerHTML = events.events.map(event => `
+                <div class="event-${event.eventType}">
+                    [${new Date(event.receivedAt).toLocaleTimeString()}] 
+                    ${event.eventType === 'arrival' ? '🟢 ARRIVÉE' : '🔴 DÉPART'} - 
+                    ${event.name || 'Inconnu'} (${event.beaconId}) - 
+                    RSSI: ${event.rssi} dBm
+                </div>
+            `).join('');
+        }
+
+        async function refreshData() {
+            await Promise.all([
+                refreshStats(),
+                refreshBeacons(),
+                refreshEvents()
+            ]);
+        }
+
+        function setupAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            
+            function toggleAutoRefresh() {
+                if (checkbox.checked) {
+                    autoRefreshInterval = setInterval(refreshData, 5000);
+                } else {
+                    clearInterval(autoRefreshInterval);
+                }
+            }
+
+            checkbox.addEventListener('change', toggleAutoRefresh);
+            toggleAutoRefresh(); // Démarrer si coché
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            setupAutoRefresh();
+        });
+    </script>
+</body>
+</html>

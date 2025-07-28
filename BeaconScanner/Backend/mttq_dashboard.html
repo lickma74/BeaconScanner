@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Events Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .events-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .event-item {
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8f9ff;
+            border-radius: 0 5px 5px 0;
+            transition: all 0.3s ease;
+        }
+        .event-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .event-item.arrival {
+            border-left-color: #28a745;
+            background: #f1f8e9;
+        }
+        .event-item.departure {
+            border-left-color: #dc3545;
+            background: #ffeaa7;
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .event-type {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 20px;
+            color: white;
+            text-transform: uppercase;
+            font-size: 0.8em;
+        }
+        .event-type.arrival {
+            background: #28a745;
+        }
+        .event-type.departure {
+            background: #dc3545;
+        }
+        .event-type.default {
+            background: #007bff;
+        }
+        .event-timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .event-details {
+            background: rgba(255,255,255,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .event-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .event-uuid {
+            color: #666;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .no-events {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📡 MQTT Events Dashboard</h1>
+        <p>Real-time beacon event monitoring</p>
+    </div>
+
+    <div id="status" class="status disconnected">
+        ⚡ Connecting to MQTT server...
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="total-events">0</div>
+            <div>Total Events</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="arrivals">0</div>
+            <div>Arrivals</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="departures">0</div>
+            <div>Departures</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="last-event">Never</div>
+            <div>Last Event</div>
+        </div>
+    </div>
+
+    <div class="events-container">
+        <h2>📨 Recent Events</h2>
+        <div id="events-list">
+            <div class="no-events">No events received yet...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let totalEvents = 0;
+        let arrivals = 0;
+        let departures = 0;
+
+        const statusEl = document.getElementById('status');
+        const totalEventsEl = document.getElementById('total-events');
+        const arrivalsEl = document.getElementById('arrivals');
+        const departuresEl = document.getElementById('departures');
+        const lastEventEl = document.getElementById('last-event');
+        const eventsListEl = document.getElementById('events-list');
+
+        function updateStatus(connected) {
+            if (connected) {
+                statusEl.textContent = '✅ Connected to MQTT server';
+                statusEl.className = 'status connected';
+            } else {
+                statusEl.textContent = '❌ Disconnected from MQTT server';
+                statusEl.className = 'status disconnected';
+            }
+        }
+
+        function updateStats() {
+            totalEventsEl.textContent = totalEvents;
+            arrivalsEl.textContent = arrivals;
+            departuresEl.textContent = departures;
+        }
+
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+
+        function addEvent(event) {
+            totalEvents++;
+            if (event.eventType === 'arrival') arrivals++;
+            if (event.eventType === 'departure') departures++;
+            
+            updateStats();
+            lastEventEl.textContent = new Date(event.timestamp || event.receivedAt).toLocaleTimeString();
+
+            // Remove "no events" message
+            const noEvents = eventsListEl.querySelector('.no-events');
+            if (noEvents) {
+                noEvents.remove();
+            }
+
+            // Create event element
+            const eventEl = document.createElement('div');
+            const eventType = event.eventType || 'event';
+            eventEl.className = `event-item ${eventType}`;
+            
+            const eventTypeClass = eventType === 'arrival' ? 'arrival' : 
+                                 eventType === 'departure' ? 'departure' : 'default';
+            
+            eventEl.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type ${eventTypeClass}">${eventType.toUpperCase()}</span>
+                    <span class="event-timestamp">${formatTimestamp(event.timestamp || event.receivedAt)}</span>
+                </div>
+                <div class="event-name">${event.name || 'Inconnu'}</div>
+                <div class="event-uuid">UUID: ${event.uuid || 'N/A'}</div>
+            `;
+
+            // Add to top of list
+            eventsListEl.insertBefore(eventEl, eventsListEl.firstChild);
+
+            // Keep only last 100 events
+            const eventItems = eventsListEl.querySelectorAll('.event-item');
+            if (eventItems.length > 100) {
+                eventItems[eventItems.length - 1].remove();
+            }
+
+            // Animate new event
+            eventEl.style.opacity = '0';
+            eventEl.style.transform = 'translateY(-20px)';
+            setTimeout(() => {
+                eventEl.style.transition = 'all 0.5s ease';
+                eventEl.style.opacity = '1';
+                eventEl.style.transform = 'translateY(0)';
+            }, 100);
+        }
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            updateStatus(true);
+            console.log('Connected to dashboard server');
+        });
+
+        socket.on('disconnect', () => {
+            updateStatus(false);
+            console.log('Disconnected from dashboard server');
+        });
+
+        socket.on('init', (events) => {
+            console.log('Received initial events:', events.length);
+            events.forEach(event => addEvent(event));
+        });
+
+        socket.on('mqtt_event', (event) => {
+            console.log('New MQTT event:', event);
+            addEvent(event);
+        });
+    </script>
+</body>
+</html>
